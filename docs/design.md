@@ -34,7 +34,7 @@ Success means it shows the whole fee cycle working end to end:
 | "Not paid" | **Registered students only.** Anyone can sign up. |
 | Reset-code delivery | Real student details are expected. Codes go out **by email over SMTP**. Until SMTP is set up, they go **only to an admin-only outbox** and never appear on the student's screen. |
 | Admin side | A separate admin area that students never see, with statistics: who paid, who hasn't, and so on. |
-| Scale | **1,000 concurrent users** browsing and paying. |
+| Scale | **1,000 students in total**, with **very light traffic**. It is a mess-bill payment site, so expect a few requests per second at most, and students do not all register or pay at once. The owner clarified this on 2026-10-27. |
 | Hosting | **A public link anyone can open.** The site is served from **GitHub Pages**. Data lives in a **free Supabase project**. |
 | Repo | **Public repo on the owner's personal GitHub account**, not the Nexthop account. |
 | Cost | **Everything free.** GitHub Pages and Actions are free for public repos. Supabase is on the free plan. Email uses a free Gmail app password. Nothing in the build or setup may need a paid plan or a card. |
@@ -113,11 +113,15 @@ Success means it shows the whole fee cycle working end to end:
    - **Reset-code outbox:** in outbox mode, lists reset requests that are
      still valid (student, email, time, code). In email mode it is empty,
      because codes go straight to the student's inbox.
-8. **1,000 concurrent users.** A load-test script runs in two phases:
+8. **1,000 students.** A load-test script runs in two phases:
    - **Phase A:** 1,000 students sign up and log in, spread over about 60
      seconds.
-   - **Phase B:** all 1,000 at once go through dashboard → create order →
-     pay with UPI ID → open bill.
+   - **Phase B:** all 1,000 go through dashboard → create order → pay with
+     UPI ID → open bill, spread over 60 seconds. That is a deadline-day rush
+     far heavier than 1,000 students would really produce.
+
+   An optional burst mode (`--pay-ramp 0`) sends all 1,000 payments at the
+   same instant. It is a stress test only, not a pass/fail gate.
 
    Pass means all of these:
    - zero server errors and zero timeouts (30 s limit)
@@ -126,9 +130,11 @@ Success means it shows the whole fee cycle working end to end:
    - Phase B: 95% of requests under 1 s
    - Phase A: 95% under 5 s
 
-   It runs against the local Supabase stack while I build. It runs once
-   against the real hosted project after setup, with the owner's go-ahead.
-   That run is the real proof. Results go in the README.
+   The full 1,000-student run is a safety margin, far above real mess-bill
+   traffic. It runs against the local Supabase stack, and its results go in
+   the README. The hosted project only gets a small smoke test of about 20
+   students, cleaned up afterwards, so the owner's free project never holds
+   1,000 fake accounts.
 
 ## 4. Non-goals (POC)
 

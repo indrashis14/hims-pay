@@ -1,0 +1,27 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HIMS_SIGNIN_LIMIT: 100000
+      HIMS_TOKEN_REFRESH_LIMIT: 100000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Start local Supabase (database, auth and API only)
+        run: npx supabase start -x studio,imgproxy,storage-api,logflare,vector,edge-runtime,realtime,postgres-meta,supavisor
+      - name: Database tests (pgTAP)
+        run: npx supabase test db
+      - name: End-to-end tests
+        run: npm run test:e2e
