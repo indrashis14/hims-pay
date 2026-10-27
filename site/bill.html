@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bill · HIMS Fee Portal</title>
+  <meta name="description" content="Pay HIMS fees by UPI (demo proof of concept).">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar no-print"><div class="inner">
+    <a class="brand" href="dashboard.html"><span class="mark">HIMS</span><span><b>HIMS Fee Portal</b><span>Student fee payments</span></span></a>
+    <div id="who"></div>
+  </div></header>
+  <main>
+    <div id="msg"></div>
+    <div id="bill"><p class="muted">Loading bill…</p></div>
+    <div class="row no-print" id="actions" hidden>
+      <button class="btn" id="print" type="button">Print / save as PDF</button>
+      <a class="btn secondary" id="back" href="dashboard.html">Back to my fees</a>
+    </div>
+  </main>
+  <script type="module">
+    import { studentClient, adminClient, call } from './js/supa.js';
+    import { page, $, el, inr, istDate, istDateTime, requireStudent, renderWho, showAlert, friendlyError, param } from './js/ui.js';
+    import { COLLEGE } from './js/config.js';
+
+    page();
+    const asAdmin = param('admin') === '1';
+    let sb;
+    if (asAdmin) {
+      sb = adminClient();
+      const me = await call(sb, 'whoami').catch(() => ({ role: 'none' }));
+      if (me.role !== 'admin') {
+        location.replace('admin/');
+        await new Promise(() => {});
+      }
+      $('#back').href = 'admin/';
+      $('#back').textContent = 'Back to admin';
+      document.querySelector('.brand').href = 'admin/';
+    } else {
+      sb = studentClient();
+      renderWho(await requireStudent(), sb);
+    }
+
+    try {
+      const b = await call(sb, 'get_bill', { p_order_id: param('order') });
+      document.title = `Bill ${b.bill_no} · HIMS Fee Portal`;
+      const fineLabel = b.days_late > 0 ? `Late fine (${b.days_late} day${b.days_late > 1 ? 's' : ''} late)` : 'Late fine';
+      $('#bill').replaceChildren(el('article', { class: 'card bill' },
+        el('div', { class: 'head' },
+          el('div', {}, el('h1', { style: 'margin:0' }, `${COLLEGE} — Fee Payment Receipt`),
+            el('div', { class: 'muted small' }, 'Paid online through the HIMS Fee Portal')),
+          el('div', {}, el('span', { class: 'stamp' }, 'PAID'))),
+        el('dl', { class: 'kv' },
+          el('dt', {}, 'Bill number'), el('dd', { class: 'mono' }, b.bill_no),
+          el('dt', {}, 'UPI transaction ID'), el('dd', { class: 'mono' }, b.utr),
+          el('dt', {}, 'Order ID'), el('dd', { class: 'mono small' }, b.order_id),
+          el('dt', {}, 'Paid on'), el('dd', {}, istDateTime(b.paid_at))),
+        el('h2', { style: 'margin-top:1.25rem' }, 'Student'),
+        el('dl', { class: 'kv' },
+          el('dt', {}, 'Name'), el('dd', {}, b.student.full_name),
+          el('dt', {}, 'Student ID'), el('dd', { class: 'mono small' }, b.student.id),
+          el('dt', {}, 'Mobile'), el('dd', {}, b.student.phone),
+          el('dt', {}, 'Email'), el('dd', {}, b.student.email)),
+        el('h2', { style: 'margin-top:1.25rem' }, 'Payment'),
+        el('dl', { class: 'kv' },
+          el('dt', {}, 'Fee term'), el('dd', {}, b.term.name),
+          el('dt', {}, 'Last date'), el('dd', {}, istDate(b.term.due_date)),
+          el('dt', {}, 'Method'), el('dd', {}, 'UPI (simulated)'),
+          el('dt', {}, 'Paid from'), el('dd', { class: 'mono' }, b.payer_vpa)),
+        el('table', { class: 'amounts' },
+          el('tr', {}, el('td', {}, 'Fee'), el('td', {}, inr(b.base_inr))),
+          el('tr', {}, el('td', {}, fineLabel), el('td', {}, inr(b.fine_inr))),
+          el('tr', { class: 'total' }, el('td', {}, 'Total paid'), el('td', {}, inr(b.total_inr)))),
+        el('div', { class: 'demo-note' }, 'DEMO — no real money was charged. This receipt is from a proof-of-concept system.')));
+      $('#actions').hidden = false;
+      $('#print').addEventListener('click', () => window.print());
+    } catch (err) {
+      $('#bill').replaceChildren();
+      showAlert($('#msg'), 'error', friendlyError(err));
+    }
+  </script>
+</body>
+</html>

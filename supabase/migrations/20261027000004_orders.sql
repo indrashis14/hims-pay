@@ -141,6 +141,30 @@ begin
 end
 $$;
 
+-- What the simulated UPI app shows before the payer approves.
+create function public.mock_upi_preview(p_order_id uuid, p_pay_token text)
+returns table (total_inr integer, status text, expires_at timestamptz, term_name text)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+begin
+  return query
+  select o.total_inr,
+         case when o.status = 'pending' and o.expires_at <= now() then 'expired'
+              else o.status::text end,
+         o.expires_at, t.name
+    from public.orders o
+    join public.fee_terms t on t.id = o.term_id
+   where o.id = p_order_id and o.pay_token = p_pay_token;
+  if not found then
+    raise exception 'BAD_TOKEN' using errcode = 'P0001';
+  end if;
+end
+$$;
+
 create function public.order_status(p_order_id uuid)
 returns text
 language sql
@@ -191,9 +215,11 @@ revoke all on function private.finalize_payment(uuid, boolean, text, text) from 
 grant execute on function private.finalize_payment(uuid, boolean, text, text) to service_role;
 revoke all on function public.create_order(bigint) from public, anon;
 revoke all on function public.mock_upi_pay(uuid, text, text, boolean) from public;
+revoke all on function public.mock_upi_preview(uuid, text) from public;
 revoke all on function public.order_status(uuid) from public, anon;
 revoke all on function public.get_bill(uuid) from public, anon;
 grant execute on function public.create_order(bigint) to authenticated;
 grant execute on function public.mock_upi_pay(uuid, text, text, boolean) to anon, authenticated;
+grant execute on function public.mock_upi_preview(uuid, text) to anon, authenticated;
 grant execute on function public.order_status(uuid) to authenticated;
 grant execute on function public.get_bill(uuid) to authenticated;

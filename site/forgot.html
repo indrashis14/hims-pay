@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Forgot password · HIMS Fee Portal</title>
+  <meta name="description" content="Pay HIMS fees by UPI (demo proof of concept).">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar"><div class="inner">
+    <a class="brand" href="index.html"><span class="mark">HIMS</span><span><b>HIMS Fee Portal</b><span>Student fee payments</span></span></a>
+    <div id="who"></div>
+  </div></header>
+  <main class="narrow">
+    <div class="card">
+      <h1>Reset your password</h1>
+      <form id="step1" novalidate>
+        <p class="muted">Enter the email you registered with. We'll send a 6-digit code.</p>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" required>
+        <div id="msg1"></div>
+        <button class="btn block" id="send" type="submit">Send code</button>
+      </form>
+
+      <form id="step2" class="hidden" novalidate>
+        <div class="alert info" role="status">
+          If an account exists for <b id="sentTo"></b>, a 6-digit code has been sent to it.
+          If no email arrives within a few minutes, ask the HIMS accounts office for your reset code.
+        </div>
+        <label for="code">6-digit code</label>
+        <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
+        <label for="password">New password</label>
+        <input id="password" type="password" autocomplete="new-password" minlength="8" required>
+        <label for="confirm">Confirm new password</label>
+        <input id="confirm" type="password" autocomplete="new-password" required>
+        <div id="msg2"></div>
+        <button class="btn block" id="reset" type="submit">Set new password</button>
+        <p class="small" style="margin:1rem 0 0"><button class="linkbtn" id="again" type="button">Use a different email</button></p>
+      </form>
+    </div>
+    <p style="text-align:center"><a href="index.html">Back to log in</a></p>
+  </main>
+  <script type="module">
+    import { studentClient, call } from './js/supa.js';
+    import { page, $, showAlert, busy, friendlyError, el } from './js/ui.js';
+    import { isValidEmail } from './js/validate.js';
+
+    page();
+    const sb = studentClient();
+    let email = '';
+
+    $('#step1').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      email = $('#email').value.trim().toLowerCase();
+      if (!isValidEmail(email)) return showAlert($('#msg1'), 'error', 'Enter a valid email address.');
+      busy($('#send'), true, 'Sending…');
+      // Same reply whether or not the account exists; rate-limit errors too,
+      // since those only happen for real accounts.
+      try { await sb.auth.resetPasswordForEmail(email); } catch {}
+      busy($('#send'), false);
+      $('#sentTo').textContent = email;
+      $('#step1').classList.add('hidden');
+      $('#step2').classList.remove('hidden');
+      $('#code').focus();
+    });
+
+    $('#again').addEventListener('click', () => {
+      $('#step2').classList.add('hidden');
+      $('#step1').classList.remove('hidden');
+    });
+
+    $('#step2').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const token = $('#code').value.replace(/\D/g, '');
+      const password = $('#password').value;
+      const say = (t) => showAlert($('#msg2'), 'error', t);
+      if (token.length !== 6) return say('Enter the 6-digit code.');
+      if (password.length < 8) return say('Use a password of at least 8 characters.');
+      if (password !== $('#confirm').value) return say('The two passwords do not match.');
+      busy($('#reset'), true, 'Saving…');
+      try {
+        const { error: vErr } = await sb.auth.verifyOtp({ email, token, type: 'recovery' });
+        if (vErr) throw vErr;
+        const { error: uErr } = await sb.auth.updateUser({ password });
+        if (uErr) throw uErr;
+        await sb.auth.signOut({ scope: 'others' });
+        const me = await call(sb, 'whoami');
+        if (me.role === 'student') return location.replace('dashboard.html');
+        await sb.auth.signOut({ scope: 'local' });
+        $('#step2').replaceChildren(el('div', { class: 'alert ok' }, 'Password changed. You can now log in.'));
+      } catch (err) {
+        say(friendlyError(err));
+        busy($('#reset'), false);
+      }
+    });
+  </script>
+</body>
+</html>

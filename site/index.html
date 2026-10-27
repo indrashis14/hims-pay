@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log in · HIMS Fee Portal</title>
+  <meta name="description" content="Pay HIMS fees by UPI (demo proof of concept).">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar"><div class="inner">
+    <a class="brand" href="index.html"><span class="mark">HIMS</span><span><b>HIMS Fee Portal</b><span>Student fee payments</span></span></a>
+    <div id="who"></div>
+  </div></header>
+  <main class="narrow">
+    <div class="card">
+      <h1>Log in</h1>
+      <p class="muted">Pay your HIMS fees online by UPI.</p>
+      <form id="f" novalidate>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" required>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+        <div id="msg"></div>
+        <button class="btn block" id="go" type="submit">Log in</button>
+      </form>
+      <p class="small" style="margin:1rem 0 0"><a href="forgot.html">Forgot password?</a></p>
+    </div>
+    <p style="text-align:center">New student? <a href="register.html">Create an account</a></p>
+  </main>
+  <script type="module">
+    import { studentClient, call } from './js/supa.js';
+    import { page, $, showAlert, busy, friendlyError } from './js/ui.js';
+
+    page();
+    const sb = studentClient();
+    const { data } = await sb.auth.getSession();
+    if (data.session) {
+      try { if ((await call(sb, 'whoami')).role === 'student') location.replace('dashboard.html'); } catch {}
+    }
+
+    $('#f').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = $('#email').value.trim().toLowerCase();
+      const password = $('#password').value;
+      if (!email || !password) return showAlert($('#msg'), 'error', 'Enter your email and password.');
+      busy($('#go'), true, 'Logging in…');
+      try {
+        const { error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        const me = await call(sb, 'whoami');
+        if (me.role !== 'student') {
+          await sb.auth.signOut({ scope: 'local' });
+          throw new Error('NOT_A_STUDENT');
+        }
+        location.replace('dashboard.html');
+      } catch (err) {
+        showAlert($('#msg'), 'error', friendlyError(err));
+        busy($('#go'), false);
+      }
+    });
+  </script>
+</body>
+</html>

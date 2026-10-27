@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Admin · HIMS Fee Portal</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <header class="topbar"><div class="inner">
+    <a class="brand" href="./"><span class="mark">HIMS</span><span><b>HIMS Fee Admin</b><span>Office use only</span></span></a>
+    <div id="who"></div>
+  </div></header>
+  <main>
+    <section id="login" class="narrow hidden" style="margin:0 auto">
+      <div class="card">
+        <h1>Admin log in</h1>
+        <form id="loginForm" novalidate>
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="username" required>
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password" required>
+          <div id="loginMsg"></div>
+          <button class="btn block" id="loginBtn" type="submit">Log in</button>
+        </form>
+      </div>
+    </section>
+
+    <section id="app" class="hidden">
+      <div class="toolbar">
+        <label for="term" style="margin:0">Fee term</label>
+        <select id="term"></select>
+      </div>
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
+        <button role="tab" data-tab="students" aria-selected="false">Students</button>
+        <button role="tab" data-tab="payments" aria-selected="false">Payments</button>
+        <button role="tab" data-tab="terms" aria-selected="false">Fee terms</button>
+        <button role="tab" data-tab="outbox" aria-selected="false">Reset codes</button>
+      </div>
+      <div id="msg"></div>
+      <div id="panel"></div>
+    </section>
+  </main>
+  <script type="module" src="../js/admin.js"></script>
+</body>
+</html>

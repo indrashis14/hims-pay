@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demo UPI app · HIMS Fee Portal</title>
+  <meta name="description" content="Pay HIMS fees by UPI (demo proof of concept).">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="narrow">
+    <div class="card" style="text-align:center">
+      <div class="chip neutral">DEMO UPI APP · no real money</div>
+      <div id="body"><p class="muted" style="margin-top:1rem">Loading payment request…</p></div>
+    </div>
+  </main>
+  <script type="module">
+    import { publicClient, call } from './js/supa.js';
+    import { page, $, el, inr, friendlyError, busy, param } from './js/ui.js';
+    import { isValidVpa } from './js/validate.js';
+    import { PAYEE } from './js/config.js';
+
+    page();
+    const sb = publicClient();
+    const orderId = param('order');
+    const token = param('t');
+    const show = (...nodes) => $('#body').replaceChildren(...nodes);
+    const done = (kind, title, text) => show(
+      el('h1', { style: 'margin-top:1rem' }, title),
+      el('div', { class: `alert ${kind}` }, text),
+      el('p', { class: 'small muted' }, 'You can close this page. The fee portal updates on its own.'));
+
+    try {
+      if (!orderId || !token) throw new Error('BAD_TOKEN');
+      const [p] = await call(sb, 'mock_upi_preview', { p_order_id: orderId, p_pay_token: token });
+      if (p.status === 'success') done('ok', 'Already paid', 'This payment has already been completed.');
+      else if (p.status === 'failed') done('error', 'Payment declined', 'This request was declined. Start again from the fee portal.');
+      else if (p.status === 'expired') done('error', 'Request expired', 'This payment request has expired. Start again from the fee portal.');
+      else {
+        const vpa = el('input', { id: 'vpa', autocomplete: 'off', autocapitalize: 'none', spellcheck: 'false', placeholder: 'yourname@okbank' });
+        const msg = el('div');
+        const approve = el('button', { class: 'btn', type: 'button' }, 'Approve & pay');
+        const decline = el('button', { class: 'btn secondary', type: 'button' }, 'Decline');
+        const respond = async (yes) => {
+          if (!isValidVpa(vpa.value)) {
+            msg.replaceChildren(el('div', { class: 'alert error' }, 'Enter a valid UPI ID, like name@bank.'));
+            return;
+          }
+          busy(yes ? approve : decline, true);
+          approve.disabled = decline.disabled = true;
+          try {
+            const [r] = await call(sb, 'mock_upi_pay', {
+              p_order_id: orderId, p_pay_token: token, p_vpa: vpa.value.trim(), p_approve: yes,
+            });
+            if (r.status === 'success') done('ok', 'Payment successful', `${inr(p.total_inr)} paid. UPI transaction ID: ${r.utr}`);
+            else done('error', 'Payment declined', 'No money was taken. Start again from the fee portal.');
+          } catch (err) {
+            done('error', 'Payment not completed', friendlyError(err));
+          }
+        };
+        approve.addEventListener('click', () => respond(true));
+        decline.addEventListener('click', () => respond(false));
+        show(
+          el('p', { class: 'muted', style: 'margin:1rem 0 0' }, 'Pay to'),
+          el('h2', { style: 'margin:0' }, PAYEE.name),
+          el('div', { class: 'small muted mono' }, PAYEE.vpa),
+          el('div', { class: 'upi-sheet' },
+            el('div', { class: 'amt' }, inr(p.total_inr)),
+            el('div', { class: 'small muted' }, p.term_name)),
+          el('div', { style: 'text-align:left' },
+            el('label', { for: 'vpa' }, 'Your UPI ID'), vpa,
+            el('div', { class: 'hint' }, 'Demo tip: an ID ending in @fail is declined by the bank.')),
+          msg,
+          el('div', { class: 'row', style: 'justify-content:center;margin-top:1rem' }, decline, approve));
+      }
+    } catch (err) {
+      done('error', 'Cannot open this payment', friendlyError(err));
+    }
+  </script>
+</body>
+</html>

@@ -143,3 +143,14 @@ test("another student cannot see someone's bill or order status", async () => {
   const { data } = await b.client.from('orders').select('id');
   assert.deepEqual(data, []);
 });
+
+test('the UPI app preview needs the pay token and shows the amount', async () => {
+  const termId = await makeTerm({ amount: 4321, dueOffsetDays: 10 });
+  const s = await newStudent();
+  const o = await order(s, termId);
+  const [p] = await rpc(anonClient(), 'mock_upi_preview', { p_order_id: o.order_id, p_pay_token: o.pay_token });
+  assert.equal(p.total_inr, 4321);
+  assert.equal(p.status, 'pending');
+  await assert.rejects(
+    rpc(anonClient(), 'mock_upi_preview', { p_order_id: o.order_id, p_pay_token: 'x' }), /BAD_TOKEN/);
+});

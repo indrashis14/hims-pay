@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create account · HIMS Fee Portal</title>
+  <meta name="description" content="Pay HIMS fees by UPI (demo proof of concept).">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar"><div class="inner">
+    <a class="brand" href="index.html"><span class="mark">HIMS</span><span><b>HIMS Fee Portal</b><span>Student fee payments</span></span></a>
+    <div id="who"></div>
+  </div></header>
+  <main class="narrow">
+    <div class="card">
+      <h1>Create your account</h1>
+      <p class="muted">You get a student ID as soon as you sign up.</p>
+      <form id="f" novalidate>
+        <label for="name">Full name</label>
+        <input id="name" autocomplete="name" required maxlength="120">
+        <label for="phone">Mobile number</label>
+        <input id="phone" type="tel" inputmode="numeric" autocomplete="tel-national" required placeholder="98765 43210">
+        <div class="hint">10-digit Indian mobile number.</div>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" required>
+        <div class="hint">Password reset codes are sent here.</div>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="new-password" required minlength="8">
+        <div class="hint">At least 8 characters.</div>
+        <label for="confirm">Confirm password</label>
+        <input id="confirm" type="password" autocomplete="new-password" required>
+        <div id="msg"></div>
+        <button class="btn block" id="go" type="submit">Create account</button>
+      </form>
+    </div>
+    <p style="text-align:center">Already registered? <a href="index.html">Log in</a></p>
+  </main>
+  <script type="module">
+    import { studentClient } from './js/supa.js';
+    import { page, $, showAlert, busy, friendlyError } from './js/ui.js';
+    import { normalizePhone, isValidEmail } from './js/validate.js';
+
+    page();
+    const sb = studentClient();
+
+    $('#f').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fullName = $('#name').value.trim();
+      const phone = normalizePhone($('#phone').value);
+      const email = $('#email').value.trim().toLowerCase();
+      const password = $('#password').value;
+      const say = (t) => showAlert($('#msg'), 'error', t);
+      if (!fullName) return say('Enter your full name.');
+      if (!phone) return say('Enter a valid 10-digit Indian mobile number.');
+      if (!isValidEmail(email)) return say('Enter a valid email address.');
+      if (password.length < 8) return say('Use a password of at least 8 characters.');
+      if (password !== $('#confirm').value) return say('The two passwords do not match.');
+
+      busy($('#go'), true, 'Creating account…');
+      try {
+        const { data, error } = await sb.auth.signUp({
+          email, password, options: { data: { full_name: fullName, phone } },
+        });
+        if (error) throw error;
+        if (!data.session) throw new Error('Signup needs email confirmation, which this demo does not use.');
+        location.replace('dashboard.html');
+      } catch (err) {
+        say(friendlyError(err));
+        busy($('#go'), false);
+      }
+    });
+  </script>
+</body>
+</html>

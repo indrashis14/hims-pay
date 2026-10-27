@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My fees · HIMS Fee Portal</title>
+  <meta name="description" content="Pay HIMS fees by UPI (demo proof of concept).">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar"><div class="inner">
+    <a class="brand" href="index.html"><span class="mark">HIMS</span><span><b>HIMS Fee Portal</b><span>Student fee payments</span></span></a>
+    <div id="who"></div>
+  </div></header>
+  <main>
+    <div class="card">
+      <div class="spread">
+        <div>
+          <h1 id="hello">My fees</h1>
+          <p class="muted small" style="margin:0">Pay only through this portal. Keep your bill for your records.</p>
+        </div>
+      </div>
+      <dl class="kv" id="profile" style="margin-top:1rem"></dl>
+    </div>
+    <div id="msg"></div>
+    <div id="dues"><p class="muted">Loading your fees…</p></div>
+    <div class="card small">
+      <h2>Late payment rules</h2>
+      <p>Pay on or before the last date and you pay only the fee. After that a late fine is added:</p>
+      <ul style="margin:0 0 .5rem; padding-left:1.2rem">
+        <li>₹5 per day for days 1 to 10 after the last date</li>
+        <li>₹10 per day for days 11 to 20</li>
+        <li>After 20 days, online payment closes. Contact the HIMS accounts office.</li>
+      </ul>
+    </div>
+  </main>
+  <script type="module">
+    import { studentClient, call } from './js/supa.js';
+    import { page, $, el, inr, istDate, requireStudent, renderWho, showAlert, friendlyError, statusChip } from './js/ui.js';
+
+    page();
+    const sb = studentClient();
+    const me = await requireStudent();
+    renderWho(me, sb);
+    const s = me.student;
+    $('#hello').textContent = `Hello, ${s.full_name.split(' ')[0]}`;
+
+    const copy = el('button', { class: 'linkbtn small', type: 'button' }, 'Copy');
+    copy.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(s.id); copy.textContent = 'Copied'; } catch {}
+    });
+    $('#profile').replaceChildren(
+      el('dt', {}, 'Student ID'), el('dd', {}, el('span', { class: 'mono' }, s.id), ' ', copy),
+      el('dt', {}, 'Name'), el('dd', {}, s.full_name),
+      el('dt', {}, 'Mobile'), el('dd', {}, s.phone),
+      el('dt', {}, 'Email'), el('dd', {}, s.email),
+    );
+
+    function chip(d) {
+      if (d.paid) return d.fine_inr > 0 ? statusChip('Paid late', 'ok') : statusChip('Paid', 'ok');
+      if (d.blocked) return statusChip('Payment closed', 'danger');
+      if (d.days_late > 0) return statusChip(`${d.days_late} day${d.days_late > 1 ? 's' : ''} late`, 'warn');
+      return statusChip('Due', 'neutral');
+    }
+
+    function card(d) {
+      const fineLabel = d.days_late > 0 ? `Late fine (${d.days_late} day${d.days_late > 1 ? 's' : ''} late)` : 'Late fine';
+      const amounts = el('table', { class: 'amounts' },
+        el('tr', {}, el('td', {}, 'Fee'), el('td', {}, inr(d.base_inr))),
+        el('tr', {}, el('td', {}, fineLabel), el('td', {}, inr(d.fine_inr))),
+        el('tr', { class: 'total' }, el('td', {}, d.paid ? 'Total paid' : 'Total due today'), el('td', {}, inr(d.total_inr))));
+      let action;
+      if (d.paid) {
+        action = el('a', { class: 'btn secondary', href: `bill.html?order=${d.order_id}` }, `View bill ${d.bill_no ?? ''}`);
+      } else if (d.blocked) {
+        action = el('div', { class: 'alert error' },
+          'Online payment for this fee has closed because it is more than 20 days late. Please contact the HIMS accounts office.');
+      } else {
+        action = el('a', { class: 'btn', href: `pay.html?term=${d.term_id}` }, `Pay ${inr(d.total_inr)} by UPI`);
+      }
+      return el('div', { class: 'card' },
+        el('div', { class: 'spread' },
+          el('div', {}, el('h2', { style: 'margin:0' }, d.term_name),
+            el('div', { class: 'muted small' }, `Last date: ${istDate(d.due_date)}`)),
+          chip(d)),
+        amounts,
+        !d.paid && !d.blocked && d.days_late > 0
+          ? el('p', { class: 'small muted' }, 'The fine goes up every day until you pay.') : null,
+        action);
+    }
+
+    try {
+      const dues = await call(sb, 'my_dues');
+      const unpaid = dues.filter((d) => !d.paid);
+      const paid = dues.filter((d) => d.paid).reverse();
+      const parts = [];
+      if (!dues.length) parts.push(el('div', { class: 'card' }, el('p', { class: 'muted', style: 'margin:0' }, 'No fees are due on your account right now.')));
+      if (unpaid.length) parts.push(el('h2', {}, 'To pay'), ...unpaid.map(card));
+      if (paid.length) parts.push(el('h2', {}, 'Paid'), ...paid.map(card));
+      $('#dues').replaceChildren(...parts);
+    } catch (err) {
+      $('#dues').replaceChildren();
+      showAlert($('#msg'), 'error', friendlyError(err));
+    }
+  </script>
+</body>
+</html>

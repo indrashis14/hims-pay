@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pay fees · HIMS Fee Portal</title>
+  <meta name="description" content="Pay HIMS fees by UPI (demo proof of concept).">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+</head>
+<body>
+  <header class="topbar no-print"><div class="inner">
+    <a class="brand" href="dashboard.html"><span class="mark">HIMS</span><span><b>HIMS Fee Portal</b><span>Student fee payments</span></span></a>
+    <div id="who"></div>
+  </div></header>
+  <main>
+    <p class="no-print" style="margin-bottom:.75rem"><a href="dashboard.html">← Back to my fees</a></p>
+    <div id="msg"></div>
+    <div id="checkout" class="hidden">
+      <div class="card">
+        <div class="spread">
+          <div><h1 style="margin:0">Pay by UPI</h1><div class="muted small" id="termName"></div></div>
+          <div class="small muted">Request expires in <b class="countdown" id="countdown">10:00</b></div>
+        </div>
+        <table class="amounts" id="amounts"></table>
+        <p class="small muted" style="margin:0">Paying to <b id="payee"></b>. The amount is fixed for the next 10 minutes.</p>
+      </div>
+
+      <div class="card" id="methods">
+        <div class="tabs" role="tablist">
+          <button role="tab" id="tab-vpa" aria-selected="true" aria-controls="panel-vpa">Pay with UPI ID</button>
+          <button role="tab" id="tab-qr" aria-selected="false" aria-controls="panel-qr">Scan QR code</button>
+        </div>
+
+        <section id="panel-vpa" role="tabpanel" aria-labelledby="tab-vpa">
+          <form id="vpaForm" novalidate>
+            <label for="vpa">Your UPI ID</label>
+            <input id="vpa" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="yourname@okbank">
+            <div class="hint">Demo tip: any UPI ID ending in <span class="mono">@fail</span> is declined by the bank.</div>
+            <button class="btn block" id="request" type="submit">Send payment request</button>
+          </form>
+          <div id="sheet" class="upi-sheet hidden" aria-live="polite">
+            <div class="small muted">DEMO UPI app · payment request</div>
+            <div class="amt" id="sheetAmt"></div>
+            <div class="small">to <b id="sheetPayee"></b></div>
+            <div class="small muted" style="margin:.25rem 0 1rem">from <span class="mono" id="sheetFrom"></span></div>
+            <div class="row" style="justify-content:center">
+              <button class="btn secondary" id="decline" type="button">Decline</button>
+              <button class="btn" id="approve" type="button">Approve &amp; pay</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="panel-qr" role="tabpanel" aria-labelledby="tab-qr" class="hidden">
+          <p style="text-align:center;margin:0">Scan this with your phone camera to open the demo UPI app and approve the payment.</p>
+          <div class="qr"><img id="qrImg" alt="QR code that opens the demo UPI app for this payment"></div>
+          <p class="small muted" style="text-align:center">This page moves to your bill automatically once the payment goes through.
+            <br><a id="qrLink" target="_blank" rel="noopener">Open the demo UPI app on this device</a></p>
+        </section>
+      </div>
+      <p class="small muted">DEMO — this is a simulated UPI payment. No real money is charged and no real UPI app is contacted.</p>
+    </div>
+  </main>
+  <script type="module">
+    import { studentClient, call } from './js/supa.js';
+    import { page, $, el, inr, requireStudent, renderWho, showAlert, friendlyError, busy, param } from './js/ui.js';
+    import { isValidVpa } from './js/validate.js';
+    import { PAYEE } from './js/config.js';
+
+    page();
+    const sb = studentClient();
+    const me = await requireStudent();
+    renderWho(me, sb);
+
+    const termId = Number(param('term'));
+    let order, timer, poller, finished = false;
+
+    const fail = (text, retry) => {
+      finished = true;
+      clearInterval(timer); clearInterval(poller);
+      $('#checkout').classList.add('hidden');
+      const box = el('div', { class: 'card' }, el('div', { class: 'alert error', role: 'alert' }, text));
+      if (retry) box.append(el('button', { class: 'btn', type: 'button', onclick: () => location.reload() }, 'Try again'));
+      box.append(' ', el('a', { class: 'btn secondary', href: 'dashboard.html' }, 'Back to my fees'));
+      $('#msg').replaceChildren(box);
+    };
+    const toBill = (orderId) => { finished = true; location.replace(`bill.html?order=${orderId}`); };
+
+    async function goToExistingBill() {
+      const dues = await call(sb, 'my_dues');
+      const d = dues.find((x) => x.term_id === termId && x.paid);
+      if (d) return toBill(d.order_id);
+      fail('This fee is already paid.');
+    }
+
+    try {
+      if (!Number.isInteger(termId) || termId <= 0) throw new Error('TERM_NOT_OWED');
+      [order] = await call(sb, 'create_order', { p_term_id: termId });
+    } catch (err) {
+      if (err.message === 'ALREADY_PAID') await goToExistingBill();
+      else fail(friendlyError(err));
+      await new Promise(() => {}); // stop here; the page now shows the outcome
+    }
+
+    const dues = await call(sb, 'my_dues').catch(() => []);
+    $('#termName').textContent = dues.find((d) => d.term_id === termId)?.term_name ?? '';
+    const fineLabel = order.days_late > 0 ? `Late fine (${order.days_late} day${order.days_late > 1 ? 's' : ''} late)` : 'Late fine';
+    $('#amounts').replaceChildren(
+      el('tr', {}, el('td', {}, 'Fee'), el('td', {}, inr(order.base_inr))),
+      el('tr', {}, el('td', {}, fineLabel), el('td', {}, inr(order.fine_inr))),
+      el('tr', { class: 'total' }, el('td', {}, 'Amount to pay'), el('td', {}, inr(order.total_inr))));
+    $('#payee').textContent = `${PAYEE.name} (${PAYEE.vpa})`;
+    $('#checkout').classList.remove('hidden');
+
+    const expiresAt = new Date(order.expires_at).getTime();
+    const tick = () => {
+      const left = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
+      $('#countdown').textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+      if (left === 0 && !finished) fail('This payment request expired. Start again to get a fresh one.', true);
+    };
+    tick();
+    timer = setInterval(tick, 1000);
+
+    function handleResult(r) {
+      if (r.status === 'success') return toBill(order.order_id);
+      if (r.status === 'failed') return fail('Payment failed: the request was declined. No money was taken.', true);
+    }
+
+    // Pay with UPI ID: the request shows up in a simulated UPI app panel.
+    $('#vpaForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const vpa = $('#vpa').value.trim();
+      if (!isValidVpa(vpa)) return showAlert($('#msg'), 'error', 'Enter a valid UPI ID, like name@bank.');
+      showAlert($('#msg'), 'info', '');
+      $('#sheetAmt').textContent = inr(order.total_inr);
+      $('#sheetPayee').textContent = PAYEE.name;
+      $('#sheetFrom').textContent = vpa;
+      $('#vpaForm').classList.add('hidden');
+      $('#sheet').classList.remove('hidden');
+      $('#approve').focus();
+    });
+
+    async function respond(approve) {
+      const btn = approve ? $('#approve') : $('#decline');
+      busy(btn, true, approve ? 'Paying…' : 'Declining…');
+      $('#approve').disabled = $('#decline').disabled = true;
+      try {
+        const [r] = await call(sb, 'mock_upi_pay', {
+          p_order_id: order.order_id, p_pay_token: order.pay_token,
+          p_vpa: $('#sheetFrom').textContent, p_approve: approve,
+        });
+        handleResult(r);
+      } catch (err) {
+        fail(friendlyError(err), err.message === 'EXPIRED');
+      }
+    }
+    $('#approve').addEventListener('click', () => respond(true));
+    $('#decline').addEventListener('click', () => respond(false));
+
+    // Scan QR: a phone opens upi.html for this order; this page polls for the result.
+    const upiUrl = new URL(`upi.html?order=${order.order_id}&t=${order.pay_token}`, location.href).href;
+    const qr = window.qrcode(0, 'M');
+    qr.addData(upiUrl);
+    qr.make();
+    $('#qrImg').src = qr.createDataURL(6, 2);
+    $('#qrLink').href = upiUrl;
+
+    function select(which) {
+      const qrOn = which === 'qr';
+      $('#tab-qr').setAttribute('aria-selected', String(qrOn));
+      $('#tab-vpa').setAttribute('aria-selected', String(!qrOn));
+      $('#panel-qr').classList.toggle('hidden', !qrOn);
+      $('#panel-vpa').classList.toggle('hidden', qrOn);
+      clearInterval(poller);
+      if (qrOn) poller = setInterval(poll, 3000);
+    }
+    async function poll() {
+      if (finished || document.hidden) return;
+      try {
+        const status = await call(sb, 'order_status', { p_order_id: order.order_id });
+        if (status === 'expired') fail('This payment request expired. Start again to get a fresh one.', true);
+        else handleResult({ status });
+      } catch { /* keep polling through brief network errors */ }
+    }
+    $('#tab-vpa').addEventListener('click', () => select('vpa'));
+    $('#tab-qr').addEventListener('click', () => select('qr'));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+  </script>
+</body>
+</html>
