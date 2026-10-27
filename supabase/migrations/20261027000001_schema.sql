@@ -50,7 +50,7 @@ create table public.orders (
   days_late       integer not null check (days_late >= 0),
   total_inr       integer generated always as (base_inr + fine_inr) stored,
   status          public.order_status not null default 'pending',
-  pay_token_hash  text not null,
+  pay_token       text not null,
   payer_vpa       text,
   utr             text unique,
   bill_no         text unique,

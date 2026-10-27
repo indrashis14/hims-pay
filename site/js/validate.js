@@ -14,5 +14,5 @@ export function isValidEmail(input) {
 }
 
 export function isValidVpa(input) {
-  return /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$/.test(String(input ?? '').trim());
+  return /^[a-zA-Z0-9._-]{2,99}@[a-zA-Z]{2,64}$/.test(String(input ?? '').trim());
 }
