@@ -8,8 +8,8 @@ const LOCAL = {
 
 // Filled in during setup (see README).
 const HOSTED = {
-  url: 'https://YOUR-PROJECT-REF.supabase.co',
-  anonKey: 'YOUR-ANON-KEY',
+  url: 'https://ciitpcnmndqiailbqecz.supabase.co',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpaXRwY25tbmRxaWFpbGJxZWN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwOTU5NTgsImV4cCI6MjEwODY3MTk1OH0.z0ScjAzqaQscH2tEVPtQURliPqeSQk2U1Lp-INkANw8',
 };
 
 const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);

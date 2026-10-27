@@ -1,17 +1,10 @@
 -- Orders and the simulated UPI gateway (design §3.5, §6, §7.1).
 
-create function private.is_admin()
-returns boolean
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select exists (select 1 from public.admins where user_id = auth.uid())
-$$;
-
 -- The gateway boundary: the only code that moves an order to success/failed.
--- A real gateway's webhook would call this with the service role.
+-- A real gateway's webhook would call this with the service role. A success
+-- reported for an order that already expired is still recorded: the money
+-- was taken. If the term is already paid that raises ALREADY_PAID, which a
+-- real webhook must treat as "refund this".
 create function private.finalize_payment(
   p_order_id uuid, p_success boolean, p_reason text, p_vpa text
 )
@@ -24,7 +17,7 @@ declare
   o public.orders;
 begin
   select * into o from public.orders where id = p_order_id for update;
-  if o.status <> 'pending' then
+  if o.status in ('success', 'failed') or (o.status = 'expired' and not p_success) then
     return o;
   end if;
   if p_success then
@@ -38,13 +31,16 @@ begin
                      || lpad(nextval('private.bill_seq')::text, 6, '0')
      where id = o.id
      returning * into o;
-  else
+  elsif o.status = 'pending' then
     update public.orders
        set status = 'failed', payer_vpa = p_vpa, failed_reason = p_reason
      where id = o.id
      returning * into o;
   end if;
   return o;
+exception
+  when unique_violation then
+    raise exception 'ALREADY_PAID' using errcode = 'P0001';
 end
 $$;
 
@@ -115,6 +111,12 @@ declare
   o public.orders;
   v_bank_fail boolean;
 begin
+  -- Same per-student-and-term lock as create_order, so a payment in flight
+  -- and a new order for the same bill can never interleave.
+  select * into o from public.orders where id = p_order_id;
+  if found then
+    perform pg_advisory_xact_lock(hashtextextended(o.student_id::text || ':' || o.term_id::text, 0));
+  end if;
   select * into o from public.orders where id = p_order_id for update;
   if not found or o.pay_token is distinct from p_pay_token then
     raise exception 'BAD_TOKEN' using errcode = 'P0001';
@@ -210,7 +212,6 @@ begin
 end
 $$;
 
-revoke all on function private.is_admin() from public;
 revoke all on function private.finalize_payment(uuid, boolean, text, text) from public;
 grant execute on function private.finalize_payment(uuid, boolean, text, text) to service_role;
 revoke all on function public.create_order(bigint) from public, anon;

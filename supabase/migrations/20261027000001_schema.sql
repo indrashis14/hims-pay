@@ -43,7 +43,8 @@ create type public.order_status as enum ('pending', 'success', 'failed', 'expire
 
 create table public.orders (
   id              uuid primary key default gen_random_uuid(),
-  student_id      uuid not null references public.students (id) on delete cascade,
+  -- restrict: an account with payment records cannot be deleted, so bills never vanish.
+  student_id      uuid not null references public.students (id) on delete restrict,
   term_id         bigint not null references public.fee_terms (id),
   base_inr        integer not null check (base_inr > 0),
   fine_inr        integer not null check (fine_inr >= 0),
@@ -88,6 +89,10 @@ revoke all on public.fee_terms, public.students, public.admins, public.term_unbl
   from public, anon, authenticated;
 revoke all on private.reset_outbox from public, anon, authenticated;
 revoke all on sequence private.bill_seq from public, anon, authenticated;
+revoke all on sequence public.fee_terms_id_seq from public, anon, authenticated;
+
+-- Functions added later must opt in to client access explicitly.
+alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
 
 grant select on public.fee_terms, public.students, public.orders to authenticated;
 grant all on public.fee_terms, public.students, public.admins, public.term_unblocks, public.orders

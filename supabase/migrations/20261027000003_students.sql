@@ -32,6 +32,41 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function private.handle_new_user();
 
+-- A token issued before the account became admin does not count: if someone
+-- else registered the email first, their old session gains nothing.
+create function private.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.admins a
+    where a.user_id = auth.uid()
+      and coalesce((auth.jwt() ->> 'iat')::bigint, 0) >= floor(extract(epoch from a.created_at))
+  )
+$$;
+
+-- Keep the student record's email in step with the login email.
+create function private.handle_user_email_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.students set email = lower(new.email) where id = new.id;
+  return new;
+end
+$$;
+
+create trigger on_auth_user_email_changed
+  after update of email on auth.users
+  for each row
+  when (new.email is distinct from old.email)
+  execute function private.handle_user_email_change();
+
 create function public.whoami()
 returns jsonb
 language sql
@@ -40,7 +75,7 @@ security definer
 set search_path = ''
 as $$
   select case
-    when exists (select 1 from public.admins a where a.user_id = auth.uid())
+    when private.is_admin()
       then jsonb_build_object('role', 'admin')
     when exists (select 1 from public.students s where s.id = auth.uid())
       then jsonb_build_object('role', 'student', 'student',
@@ -106,6 +141,8 @@ end
 $$;
 
 revoke all on function private.handle_new_user() from public;
+revoke all on function private.handle_user_email_change() from public;
+revoke all on function private.is_admin() from public;
 revoke all on function private.require_student() from public;
 revoke all on function public.whoami() from public, anon;
 revoke all on function public.my_dues() from public, anon;

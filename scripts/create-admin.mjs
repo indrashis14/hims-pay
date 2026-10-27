@@ -34,20 +34,24 @@ for (let page = 1; !user; page++) {
   user = data.users.find((u) => u.email === email);
   if (data.users.length < 1000) break;
 }
-if (user) {
-  const { error } = await svc.auth.admin.updateUserById(user.id, { password: a.password });
-  if (error) throw error;
-} else {
-  const { data, error } = await svc.auth.admin.createUser({
-    email, password: a.password, email_confirm: true,
-  });
-  if (error) throw error;
-  user = data.user;
-}
 
-// An admin is never also a student.
-let { error } = await svc.from('students').delete().eq('id', user.id);
-if (error) throw error;
-({ error } = await svc.from('admins').upsert({ user_id: user.id }));
-if (error) throw error;
-console.log(`Admin ready: ${email} (${user.id})`);
+if (user) {
+  // Signup is open, so an existing account with this email may belong to
+  // someone else. Only an account that is already the admin can be updated.
+  const { data: row, error } = await svc.from('admins').select('user_id').eq('user_id', user.id).maybeSingle();
+  if (error) throw error;
+  if (!row) {
+    console.error(`Refusing: ${email} already has a (non-admin) account, possibly created by someone else.\n` +
+      'Delete that user in the Supabase dashboard (Authentication → Users) or pick another email, then rerun.');
+    process.exit(1);
+  }
+  const { error: e2 } = await svc.auth.admin.updateUserById(user.id, { password: a.password });
+  if (e2) throw e2;
+  console.log(`Admin password updated: ${email} (${user.id})`);
+} else {
+  const { data, error } = await svc.auth.admin.createUser({ email, password: a.password, email_confirm: true });
+  if (error) throw error;
+  const { error: e2 } = await svc.from('admins').insert({ user_id: data.user.id });
+  if (e2) throw e2;
+  console.log(`Admin created: ${email} (${data.user.id})`);
+}

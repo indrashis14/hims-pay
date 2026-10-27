@@ -72,27 +72,31 @@ free GitHub account.
    `config push` applies, among other things, the rate limits from
    `supabase/.env`, the 10-minute reset codes, the reset-code email template,
    and the outbox hook.
-3. **Point the site at your project.** In `site/js/config.js`, set
-   `HOSTED.url` and `HOSTED.anonKey`. The anon key is meant to be public.
-4. **Publish the site.** Create a **public** repo named `hims-pay` on your
-   GitHub account and push this folder to it. Then go to *Settings → Pages →
-   Build and deployment → Source: GitHub Actions*. The site appears at
-   `https://<your-github-username>.github.io/hims-pay/`.
-5. **Create the admin account.** Use a strong password; the admin can see
-   every student.
+3. **Create the admin account now, before anything is public.** Signup is
+   open once the site is live. `create-admin` refuses an email that already
+   has an account, so nobody can register your admin email first and get
+   promoted. Use a strong password; the admin can see every student.
    ```bash
    node scripts/create-admin.mjs --url https://<ref>.supabase.co \
      --service-key <service_role key> --email you@example.com --password '<12+ characters>'
    ```
-   Open `https://<your-github-username>.github.io/hims-pay/admin/`, log in, and
-   create the first bill under **Fee terms**, for example "Mess bill —
-   November 2026".
-6. **Smoke test** (optional). This creates 20 throwaway students, pays for
-   each, checks the database, then deletes them all:
+   Running it again for the same admin email just changes the password.
+4. **Smoke test, before you share the link** (optional). This creates 20
+   throwaway students and a temporary bill, pays it for each one, checks the
+   database, then deletes everything it made:
    ```bash
    node loadtest/run.mjs --url https://<ref>.supabase.co --anon <anon key> \
      --service <service_role key> --users 20 --ramp 10 --pay-ramp 10
    ```
+5. **Point the site at your project.** In `site/js/config.js`, set
+   `HOSTED.url` and `HOSTED.anonKey`. The anon key is meant to be public.
+6. **Publish the site.** Create a **public** repo named `hims-pay` on your
+   GitHub account and push this folder to it. Then go to *Settings → Pages →
+   Build and deployment → Source: GitHub Actions*. The site appears at
+   `https://<your-github-username>.github.io/hims-pay/`.
+7. **Create the first bill.** Open
+   `https://<your-github-username>.github.io/hims-pay/admin/`, log in, and go
+   to **Fee terms**. For example: "Mess bill — November 2026".
 
 ## Password reset: outbox mode and email mode
 
@@ -133,6 +137,19 @@ email belongs to an account.
 - The admin page's code is public, but it shows no data unless you log in as
   the admin account.
 - Bills and payment screens carry a DEMO label while payments are simulated.
+- An account that has a payment cannot be deleted (the database refuses), so
+  bills never disappear. Accounts with no payments can be deleted from the
+  Supabase dashboard.
+- A login session that existed **before** an account was made admin never
+  gets admin rights. The person has to log in again.
+- The site loads no third-party scripts at runtime. `supabase-js` and the QR
+  library are bundled in `site/js/vendor/`; refresh them with `npm run
+  vendor`.
+- Known and accepted: the forgot-password **screen** never reveals whether an
+  email is registered. The underlying auth API can, though: asking twice in a
+  minute is rate-limited only for real accounts. The signup form reveals this
+  too ("an account with this email already exists"), which this design
+  accepts.
 
 ## Load test
 

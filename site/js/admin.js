@@ -113,12 +113,13 @@ function download(filename, header, rows) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+// The Data API returns at most 1,000 rows per call, so page until total_count.
 async function fetchAll(fn, args) {
   const out = [];
-  for (let offset = 0; ; offset += 5000) {
-    const rows = await call(sb, fn, { ...args, p_limit: 5000, p_offset: offset });
+  for (;;) {
+    const rows = await call(sb, fn, { ...args, p_limit: 1000, p_offset: out.length });
     out.push(...rows);
-    if (rows.length < 5000) return out;
+    if (!rows.length || out.length >= Number(rows[0].total_count)) return out;
   }
 }
 const billLink = (orderId, text) => (orderId ? el('a', { href: `../bill.html?order=${orderId}&admin=1` }, text) : '');

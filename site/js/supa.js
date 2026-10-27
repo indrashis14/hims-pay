@@ -1,5 +1,8 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm';
+// supabase-js 2.117.3 is bundled in js/vendor (no CDN at runtime), loaded by a
+// <script> tag on every page before this module runs.
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+
+const { createClient } = window.supabase;
 
 // Students and the admin keep separate sessions in the same browser.
 let student, admin;

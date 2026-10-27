@@ -103,8 +103,10 @@ async function req(op, path, { method = 'POST', token, body, key = a.anon } = {}
 
 const svc = (path, opts = {}) => req('admin', path, { ...opts, key: a.service });
 
-// Deletes users by email prefix (not by recorded ids: a signup can succeed on
-// the server after the client already gave up), then the terms.
+// Removes load-test users (found by email prefix, not by recorded ids: a
+// signup can succeed on the server after the client gave up), their orders,
+// and the load-test terms. Real students' orders are never touched: if any
+// exist on a load-test term, the term is kept and reported.
 async function cleanup(emailPrefix, termFilter) {
   const ids = [];
   for (let page = 1; ; page++) {
@@ -113,18 +115,28 @@ async function cleanup(emailPrefix, termFilter) {
     ids.push(...list.filter((u) => u.email?.startsWith(emailPrefix) && u.email.endsWith('@loadtest.invalid')).map((u) => u.id));
     if (list.length < 1000) break;
   }
+  for (let i = 0; i < ids.length; i += 100) {
+    await svc(`/rest/v1/orders?student_id=in.(${ids.slice(i, i + 100).join(',')})`, { method: 'DELETE' });
+  }
   for (let i = 0; i < ids.length; i += 25) {
     await Promise.all(ids.slice(i, i + 25).map((id) => svc(`/auth/v1/admin/users/${id}`, { method: 'DELETE' })));
   }
-  const terms = (await svc(`/rest/v1/fee_terms?${termFilter}&select=id`, { method: 'GET' })) ?? [];
+
+  const terms = (await svc(`/rest/v1/fee_terms?${termFilter}&select=id&order=id.desc`, { method: 'GET' })) ?? [];
+  const kept = [];
   for (const t of terms) {
-    await svc(`/rest/v1/orders?term_id=eq.${t.id}`, { method: 'DELETE' });
-    await svc(`/rest/v1/fee_terms?id=eq.${t.id}`, { method: 'DELETE' });
+    // A real student who signed up while this term was the newest would owe
+    // nothing older; point them back at the term that was active before it.
+    const [prev] = (await svc(`/rest/v1/fee_terms?id=lt.${t.id}&select=id&order=id.desc&limit=1`, { method: 'GET' })) ?? [];
+    await svc(`/rest/v1/students?first_term_id=eq.${t.id}`, {
+      method: 'PATCH', body: { first_term_id: prev?.id ?? 0 },
+    });
+    const del = await svc(`/rest/v1/fee_terms?id=eq.${t.id}`, { method: 'DELETE' });
+    if (del === null) kept.push(t.id);
   }
-  const left = (await svc(`/rest/v1/fee_terms?${termFilter}&select=id`, { method: 'GET' })) ?? [];
-  console.log(`cleanup: deleted ${ids.length} users and ${terms.length - left.length} term(s)` +
-    (left.length ? `; ${left.length} term(s) could NOT be deleted` : ''));
-  return left.length === 0;
+  console.log(`cleanup: deleted ${ids.length} users and ${terms.length - kept.length} term(s)` +
+    (kept.length ? `; kept term(s) ${kept.join(', ')} because real students have orders on them` : ''));
+  return kept.length === 0;
 }
 
 if (a['cleanup-only']) {
@@ -195,7 +207,15 @@ console.log(`phase B done in ${phaseB}s`);
 
 // ---------- verify in the database ----------
 
-const rows = await svc(`/rest/v1/orders?term_id=eq.${term.id}&status=eq.success&select=student_id,utr,bill_no,total_inr`, { method: 'GET' });
+// The Data API returns at most 1,000 rows per call, so read in pages.
+const rows = [];
+for (;;) {
+  const page = await svc(`/rest/v1/orders?term_id=eq.${term.id}&status=eq.success` +
+    `&select=student_id,utr,bill_no,total_inr&order=id&limit=1000&offset=${rows.length}`, { method: 'GET' });
+  if (!page) break;
+  rows.push(...page);
+  if (page.length < 1000) break;
+}
 const students = new Set(rows?.map((r) => r.student_id));
 const verify = {
   success_orders: rows?.length ?? -1,

@@ -157,7 +157,9 @@ Success means it shows the whole fee cycle working end to end:
 - **A student seeing any other student's data**, or any admin data.
 - **Plain-text passwords in the database.** Supabase stores password hashes.
   Reset codes are handled by Supabase Auth. In outbox mode, unsent codes are
-  kept in a table only the admin can read, and are deleted once they expire.
+  kept in a table only the admin can read. Expired codes are purged on the
+  next reset request or the next time the admin opens the outbox. Supabase
+  Auth rejects them after 10 minutes either way.
 - **Revealing whether an email is registered** from the forgot-password
   screen.
 - **Looking like it takes real money.** Every payment screen and bill carries
@@ -204,8 +206,9 @@ Examples: 1 day late → +₹5, 10 days → +₹50, 11 → +₹60, 15 → +₹10
 
 ### 7.1 Pieces
 
-- **Frontend:** static HTML, CSS and vanilla JavaScript (ES modules), with
-  `supabase-js` loaded from a version-pinned CDN URL. There is no build step.
+- **Frontend:** static HTML, CSS and vanilla JavaScript (ES modules). The
+  pinned `supabase-js` and QR libraries are bundled in `site/js/vendor`, so no
+  third-party script loads at runtime. There is no build step.
   It is deployed to GitHub Pages by a GitHub Actions workflow on every push
   to `main`.
 - **Backend:** a free Supabase project.

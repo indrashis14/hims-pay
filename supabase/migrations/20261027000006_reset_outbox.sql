@@ -11,6 +11,7 @@ as $$
 declare
   v_user uuid := (event #>> '{user,id}')::uuid;
 begin
+  delete from private.reset_outbox where expires_at <= now();
   if event #>> '{email_data,email_action_type}' = 'recovery' then
     delete from private.reset_outbox where user_id = v_user;
     insert into private.reset_outbox (user_id, email, code, expires_at)

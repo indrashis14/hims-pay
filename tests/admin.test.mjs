@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newStudent, makeTerm, setDue, makeAdmin, rpc } from './helpers.mjs';
+import { spawnSync } from 'node:child_process';
+import { newStudent, makeTerm, setDue, makeAdmin, rpc, anonClient, serviceClient, LOCAL } from './helpers.mjs';
 
 const order = async (s, termId) => (await rpc(s.client, 'create_order', { p_term_id: termId }))[0];
 const pay = async (s, o) => (await rpc(s.client, 'mock_upi_pay', {
@@ -150,4 +151,37 @@ test('only the active term can be edited, and bad values are refused', async () 
   }), /BAD_NAME/);
   const terms = await rpc(admin.client, 'admin_terms');
   assert.ok(terms[0].id > terms[1].id, 'newest first');
+});
+
+test('a login from before the account became admin does not get admin rights', async () => {
+  await makeTerm();
+  const s = await newStudent();
+  await new Promise((r) => setTimeout(r, 1100)); // token iat is in whole seconds
+  const { error } = await serviceClient().from('admins').insert({ user_id: s.user.id });
+  assert.ifError(error);
+  assert.equal((await rpc(s.client, 'whoami')).role, 'student');
+  await assert.rejects(rpc(s.client, 'admin_stats', { p_term_id: null }), /FORBIDDEN/);
+  const fresh = anonClient();
+  assert.ifError((await fresh.auth.signInWithPassword({ email: s.email, password: s.password })).error);
+  assert.equal((await rpc(fresh, 'whoami')).role, 'admin');
+});
+
+test('create-admin refuses an email that already has a non-admin account', async () => {
+  const s = await newStudent();
+  const run = (email, password) => spawnSync('node', ['scripts/create-admin.mjs', '--url', LOCAL.url,
+    '--service-key', LOCAL.serviceKey, '--email', email, '--password', password], { encoding: 'utf8' });
+  const refused = run(s.email, 'SomeAdminPass#1');
+  assert.equal(refused.status, 1);
+  assert.match(refused.stderr, /Refusing/);
+  assert.equal((await rpc(s.client, 'whoami')).role, 'student');
+
+  const email = `newadmin-${Date.now()}@test.invalid`;
+  const created = run(email, 'SomeAdminPass#1');
+  assert.equal(created.status, 0, created.stderr);
+  const again = run(email, 'OtherAdminPass#2');
+  assert.equal(again.status, 0, again.stderr);
+  assert.match(again.stdout, /password updated/);
+  const c = anonClient();
+  assert.ifError((await c.auth.signInWithPassword({ email, password: 'OtherAdminPass#2' })).error);
+  assert.equal((await rpc(c, 'whoami')).role, 'admin');
 });
