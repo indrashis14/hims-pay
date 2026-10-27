@@ -255,6 +255,17 @@ otp_expiry = 600
 # subject = "Your password has been changed"
 # content_path = "./supabase/templates/password_changed_notification.html"
 
+# Email-mode template (used once SMTP is configured and the hook below is off).
+[auth.email.template.recovery]
+subject = "HIMS fee portal: your password reset code"
+content_path = "./supabase/templates/recovery.html"
+
+# Outbox mode: reset codes go to an admin-only table instead of email.
+# Turn this off (and configure [auth.email.smtp]) to switch to email mode.
+[auth.hook.send_email]
+enabled = true
+uri = "pg-functions://postgres/private/hook_send_email"
+
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.
 enable_signup = false
